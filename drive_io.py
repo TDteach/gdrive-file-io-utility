@@ -106,11 +106,11 @@ class DriveIO(object):
                         # name, id, modifiedTime, sharingUser
                         response = self.service.files().list(q=query,
                                                              pageSize=self.page_size,
-                                                             fields="nextPageToken, files(name, id, modifiedTime, owners, parents)",
+                                                             fields="nextPageToken, files(name, id, modifiedTime, owners, parents, mimeType)",
                                                              pageToken=page_token,
                                                              spaces='drive').execute(num_retries=self.max_retry_count)
                         items.extend(response.get('files'))
-                        page_token = response.get('nextPageToken', None)
+                        page_token = response.get('nextPageTokey', None)
                         if page_token is None:
                             break
                     break  # successfully download file list, break exponential backoff scheme loop
@@ -128,8 +128,14 @@ class DriveIO(object):
             file_list = list()
             for item in items:
                 owner = item['owners'][0]  # user first owner by default
-                g_file = GoogleDriveFile(owner['emailAddress'], item['name'], item['id'], item['modifiedTime'], item['parents'])
+                if 'parents' not in item.keys():
+                    parents=None
+                else:
+                    parents=item['parents']
+                #print(owner['emailAddress'], item['name'])
+                g_file = GoogleDriveFile(owner['emailAddress'], item['name'], item['id'], item['modifiedTime'], parents, item['mimeType'])
                 file_list.append(g_file)
+                #break
         except:
             logging.error('Failed to connect to and list files from Drive.')
             raise
@@ -186,7 +192,7 @@ class DriveIO(object):
                 logging.error('Failed to download file "{}" from Drive.'.format(g_file.name))
                 raise
 
-    def upload(self, file_path: str, only_root_flag=True) -> str:
+    def upload(self, file_path: str) -> str:
         _, file_name = os.path.split(file_path)
         logging.info('Uploading file: "{}" to Drive'.format(file_name))
         m_type = mimetypes.guess_type(file_name)[0]
@@ -195,7 +201,7 @@ class DriveIO(object):
 
         for retry_count in range(self.max_retry_count):
             try:
-                existing_files_list = self.query_by_email_and_filename(self.email_address, file_name, only_root_flag=only_root_flag)
+                existing_files_list = self.query_by_email_and_filename(self.email_address, file_name, only_root_flag=True)
 
                 existing_file_id = None
                 if len(existing_files_list) > 0:
